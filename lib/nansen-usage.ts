@@ -1,3 +1,5 @@
+import type {Meeting,Period} from '@/lib/boardroom';
+
 // The counter spans Vercel instances and deployments. A missing or unreachable
 // Redis store fails closed: we do not call the paid upstream without a budget.
 const PREFIX='meridian:2026-buildathon';
@@ -6,6 +8,7 @@ const SUCCEEDED=`${PREFIX}:succeeded`;
 const USABLE=`${PREFIX}:usable`;
 const CREDITS=`${PREFIX}:credits`;
 const AUDIT=`${PREFIX}:recent`;
+const HISTORY=(period:Period)=>`${PREFIX}:history:${period}`;
 
 export function usageConfig(){
  // The Vercel Upstash integration prefixes its injected REST credentials.
@@ -46,14 +49,24 @@ export async function reserveNansenCall():Promise<boolean>{
  return Number(response.result[0])===1;
 }
 
-export async function recordNansenCall(status:number,usable:boolean,credits:number|null,period:string,requestId:string|null){
+export async function recordNansenCall(status:number,usable:boolean,credits:number|null,period:Period,requestId:string|null,meeting?:Meeting|null){
  const entry=JSON.stringify({at:new Date().toISOString(),period,status,usable,credits,requestId});
  const commands:(string|number)[][]=[['LPUSH',AUDIT,entry],['LTRIM',AUDIT,0,199]];
+ if(meeting?.source==='api'&&usable){
+  const point=JSON.stringify({at:meeting.asOf,period,cohorts:meeting.cohorts.map(c=>({id:c.id,flow:c.flow,status:c.status})),warning:meeting.warning??null});
+  commands.push(['LPUSH',HISTORY(period),point],['LTRIM',HISTORY(period),0,1199]);
+ }
  if(status>=200&&status<300)commands.push(['INCR',SUCCEEDED]);
  if(usable)commands.push(['INCR',USABLE]);
  if(credits!==null&&Number.isSafeInteger(credits)&&credits>=0)commands.push(['INCRBY',CREDITS,credits]);
  const result=await command('/multi-exec',commands) as Array<{error?:string}>;
  if(!Array.isArray(result)||result.some(x=>x.error))throw new Error('Usage audit could not be persisted');
+}
+
+export async function readNansenHistory(period:Period){
+ const response=await command('', ['LRANGE',HISTORY(period),0,71]) as {result?:unknown};
+ if(!Array.isArray(response.result))throw new Error('Unexpected history reply');
+ return response.result.map(row=>JSON.parse(String(row)) as {at:string;period:Period;cohorts:{id:string;flow:number|null;status:string}[];warning:string|null}).reverse();
 }
 
 export async function readNansenUsage(){
