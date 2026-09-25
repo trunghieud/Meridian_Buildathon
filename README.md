@@ -11,9 +11,11 @@ Production: `pnpm build`, then `pnpm start`.
 
 ## Vercel deployment
 
-Import this repository into Vercel as a Next.js project. The root is the repository root. Build command: `pnpm build`. No custom output directory. Public deployment requested by the owner. No Vercel deployment has been completed for this version.
+The public Next.js deployment is at https://meridian-buildathon.vercel.app. The root is the repository root. Build command: `pnpm build`. No custom output directory.
 
-After the project exists, set `NANSEN_API_KEY` as a sensitive server-side environment variable for Production and Preview and redeploy. Never prefix it with NEXT_PUBLIC_, commit it, or put it in browser code. No key is needed to build or view the clearly dated initial snapshot.
+For live data, create a key at https://app.nansen.ai/api and set `NANSEN_API_KEY` as a sensitive server-side Vercel environment variable for Production (and Preview if needed). Never prefix it with NEXT_PUBLIC_, commit it, or put it in browser code. Provision Upstash Redis through the Vercel Marketplace and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for the same environment. Set `NANSEN_MAX_API_CALLS` to a positive hard limit; the site deliberately stays on its dated snapshot until both the key and durable budget are present. Set a separate random `NANSEN_USAGE_ADMIN_TOKEN` to read the private usage report. Redeploy after changing environment variables.
+
+Verify with `GET /api/meeting?period=1d`: `source: "api"` and a current `asOf` mean a live Nansen response was parsed. `source: "snapshot"` plus `warning` explains why live refresh is unavailable. Check the guarded counter with `curl -H 'Authorization: Bearer <YOUR_ADMIN_TOKEN>' https://meridian-buildathon.vercel.app/api/usage`. `requests` counts actual outbound attempts reserved before dispatch; `succeeded` counts 2xx replies; `usable` counts 2xx replies with at least one measured cohort; `reportedCredits` sums the optional Nansen cost response header. Public responses and the browser's 15-minute cache do not increment these counters. Nansen's own usage analytics at https://app.nansen.ai/api?tab=usage-analytics is authoritative for eligibility and billing.
 
 ## Branding and voice
 
@@ -29,16 +31,14 @@ BONER / Robinhood Chain: `0x98096d17e191b3da1d5f99a6d7b3584351b11e18`.
 
 Initial observations are dated September 25, 2026 at 16:13 UTC. 24h Smart Trader net flow: approximately +$73.7K across 4 active wallets. 7d: Smart Traders +$143.9K (27 wallets), Public Figures +$167.6K (5 wallets). Whale summaries reported no significant net flow. Missing and unquantified data are never fabricated as zero. Cohorts may overlap; flow is not equivalent to a DEX purchase. The separate trading panel is a fixed, explicitly dated launch snapshot.
 
-`GET /api/meeting?period=1h|1d|7d` uses the Nansen Flow Intelligence API when a key is present. Responses use 15-minute Vercel CDN caching, warm-instance caching and in-flight deduplication. These are cost controls, not a durable global budget. No unattended collection or automatic social posting is enabled. API errors fall back visibly to the dated snapshot. The authenticated API path remains unverified until the owner configures a key.
+`GET /api/meeting?period=1h|1d|7d` uses the Nansen Flow Intelligence API when a key and durable budget are present. Upstash atomically reserves one outbound request before each Nansen fetch across all Vercel instances. A missing or unreachable counter fails closed. Responses also use 15-minute Vercel CDN caching, warm-instance caching and in-flight deduplication. API errors fall back visibly to the dated snapshot. No unattended collection or automatic social posting is enabled. The authenticated API path remains unverified until the owner configures a key.
 
 The share card is generated on demand and always uses 24h data. It includes observation timestamp and attribution. Daily scheduling and persistent archives are not implemented.
 
 ## Buildathon remaining work
 
-1. Publish the prepared source to the existing `trunghieud/Meridian_Buildathon` repository.
-2. Deploy the public Vercel project.
-3. Configure and verify the API key.
-4. Add durable usage counting and a collection budget; verify 1,000 qualifying API calls.
-5. Record a 30–60 second demo and submit by September 27, 2026 at 23:59 UTC, per the supplied announcement.
+1. Configure and verify the API key, Upstash Redis, and call budget as above.
+2. Check actual qualifying calls in Nansen usage analytics. The campaign page says 1,000 calls, while Nansen's help article says 100+. Use the stricter target until Nansen resolves the conflict; local counters alone are not proof of qualification. Claim the buildathon's available API credits before running any collection.
+3. Record a 30–60 second silent-friendly demo showing live Nansen data, post it on X tagging `@nansen_ai` and linking this public repository, then submit email, X post URL, and GitHub URL in the official entry form by September 27, 2026 at 23:59 UTC.
 
 Research connector calls are not assumed to count toward eligibility. Follow Nansen's redistribution guidelines; this version uses aggregate flow data with attribution, not restricted individual Smart Money wallet lists or the raw Address Labels endpoint.
