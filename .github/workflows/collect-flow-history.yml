@@ -1,0 +1,48 @@
+name: Collect BONER flow history
+
+on:
+  schedule:
+    # GitHub Actions runs schedules on the default branch; offset avoids the hour boundary.
+    - cron: '2-59/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boner-flow-collection
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Capture three time windows
+        env:
+          BOARDROOM_URL: https://meridian-buildathon.vercel.app
+        run: |
+          python - <<'PY'
+          import datetime, json, os, sys, time, urllib.request
+
+          # The campaign closes at this instant. Do not continue consuming credits afterward.
+          cutoff = datetime.datetime(2026, 9, 27, 23, 59, tzinfo=datetime.timezone.utc)
+          if datetime.datetime.now(datetime.timezone.utc) >= cutoff:
+              print('Buildathon collection window has closed.')
+              sys.exit(0)
+
+          for period in ('1h', '1d', '7d'):
+              url = os.environ['BOARDROOM_URL'] + '/api/meeting?period=' + period
+              request = urllib.request.Request(url, headers={'User-Agent': 'Meridian-Buildathon-Collector/1.0'})
+              with urllib.request.urlopen(request, timeout=35) as response:
+                  meeting = json.load(response)
+              print(json.dumps({'period': period, 'source': meeting.get('source'),
+                                'asOf': meeting.get('asOf'), 'warning': meeting.get('warning')}, sort_keys=True))
+              if meeting.get('source') != 'api':
+                  if 'budget has been reached' in meeting.get('warning', ''):
+                      print('Redis call limit reached. Collection stopped.')
+                      break
+                  raise RuntimeError('Live Nansen observation was unavailable for ' + period)
+              # Keep upstream requests sequential and well below Nansen rate limits.
+              time.sleep(1)
+          PY
