@@ -46,7 +46,7 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
  }finally{
   // Count the actual upstream response, even if parsing fails. Official Nansen
   // usage analytics remains the authority on calls that qualify for the event.
-  await recordNansenCall(response.status,Boolean(result?.cohorts.some(c=>c.status==='measured')),credits,period,requestId);
+  await recordNansenCall(response.status,Boolean(result?.cohorts.some(c=>c.status==='measured')),credits,period,requestId,result);
  }
  if(!response.ok)throw new Error(`Nansen returned HTTP ${response.status}.`);
  if(!result)throw new Error('Nansen returned an unexpected response.');
@@ -60,13 +60,13 @@ export async function GET(request:Request){
  if(!apiKey)return fallback(period,'Nansen API key is not configured. Showing the dated launch snapshot.');
  if(!usageConfig())return fallback(period,'Live refresh is paused until durable usage counting and a call budget are configured.');
  const warm=localCache.get(period);
- if(warm&&warm.expires>Date.now())return Response.json(warm.data,{headers:{'Cache-Control':'public,max-age=0,s-maxage=900,stale-while-revalidate=60'}});
+ if(warm&&warm.expires>Date.now())return Response.json(warm.data,{headers:{'Cache-Control':'public,max-age=0,s-maxage=240,stale-while-revalidate=30'}});
  try{
   let pending=inFlight.get(period);
   if(!pending){pending=fetchMeeting(period,apiKey);inFlight.set(period,pending);}
   const result=await pending;
-  localCache.set(period,{expires:Date.now()+900000,data:result});
-  return Response.json(result,{headers:{'Cache-Control':'public,max-age=0,s-maxage=900,stale-while-revalidate=60'}});
+  localCache.set(period,{expires:Date.now()+240000,data:result});
+  return Response.json(result,{headers:{'Cache-Control':'public,max-age=0,s-maxage=240,stale-while-revalidate=30'}});
  }catch(error){
   const detail=error instanceof Error&&error.message.includes('budget')?'The Nansen call budget has been reached.':'Nansen could not be refreshed or counted.';
   return fallback(period,`${detail} Showing the dated launch snapshot.`);
