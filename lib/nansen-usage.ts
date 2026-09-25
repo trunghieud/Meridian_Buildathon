@@ -8,8 +8,9 @@ const CREDITS=`${PREFIX}:credits`;
 const AUDIT=`${PREFIX}:recent`;
 
 export function usageConfig(){
- const url=process.env.UPSTASH_REDIS_REST_URL;
- const token=process.env.UPSTASH_REDIS_REST_TOKEN;
+ // The Vercel Upstash integration prefixes its injected REST credentials.
+ const url=process.env.UPSTASH_REDIS_REST_URL??process.env.UPSTASH_REDIS_REST_KV_REST_API_URL;
+ const token=process.env.UPSTASH_REDIS_REST_TOKEN??process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN;
  const raw=process.env.NANSEN_MAX_API_CALLS??'';
  const budget=/^[1-9]\d*$/.test(raw)?Number(raw):0;
  if(!url||!token||!Number.isSafeInteger(budget)||budget<1||budget>100000)return null;
