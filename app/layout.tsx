@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: "The BONER Boardroom | Morning Wood Report",
   description: "An extraordinarily unserious shareholder meeting powered by real Nansen cohort flows. Featuring the Morning Wood Report.",
   icons: {
-    icon: "/boner-logo.png",
-    shortcut: "/boner-logo.png",
+    icon: "/api/art/boner-logo",
+    shortcut: "/api/art/boner-logo",
   },
 };
 
