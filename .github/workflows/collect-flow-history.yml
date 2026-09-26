@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: boner-flow-collection
+  group: boner-flow-collection-v2
   cancel-in-progress: false
 
 jobs:
