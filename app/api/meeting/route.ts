@@ -4,6 +4,7 @@ import {recordNansenCall,reserveNansenCall,usageConfig} from '@/lib/nansen-usage
 const inFlight=new Map<Period,Promise<Meeting>>();
 const localCache=new Map<Period,{expires:number;data:Meeting}>();
 const periods:Period[]=['1h','1d','7d'];
+const CACHE_SECONDS:Record<Period,number>={'1h':100,'1d':220,'7d':540};
 
 function fallback(period:Period,warning:string){
  return Response.json({...snapshot(period),warning},{headers:{'Cache-Control':'no-store'}});
@@ -60,13 +61,14 @@ export async function GET(request:Request){
  if(!apiKey)return fallback(period,'Nansen API key is not configured. Showing the dated launch snapshot.');
  if(!usageConfig())return fallback(period,'Live refresh is paused until durable usage counting and a call budget are configured.');
  const warm=localCache.get(period);
- if(warm&&warm.expires>Date.now())return Response.json(warm.data,{headers:{'Cache-Control':'public,max-age=0,s-maxage=240,stale-while-revalidate=30'}});
+ const cacheSeconds=CACHE_SECONDS[period];
+ if(warm&&warm.expires>Date.now())return Response.json(warm.data,{headers:{'Cache-Control':`public,max-age=0,s-maxage=${cacheSeconds},stale-while-revalidate=15`}});
  try{
   let pending=inFlight.get(period);
   if(!pending){pending=fetchMeeting(period,apiKey);inFlight.set(period,pending);}
   const result=await pending;
-  localCache.set(period,{expires:Date.now()+240000,data:result});
-  return Response.json(result,{headers:{'Cache-Control':'public,max-age=0,s-maxage=240,stale-while-revalidate=30'}});
+  localCache.set(period,{expires:Date.now()+cacheSeconds*1000,data:result});
+  return Response.json(result,{headers:{'Cache-Control':`public,max-age=0,s-maxage=${cacheSeconds},stale-while-revalidate=15`}});
  }catch(error){
   const detail=error instanceof Error&&error.message.includes('budget')?'The Nansen call budget has been reached.':'Nansen could not be refreshed or counted.';
   return fallback(period,`${detail} Showing the dated launch snapshot.`);
