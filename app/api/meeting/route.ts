@@ -35,22 +35,22 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
    if(row&&typeof row==='object'){
     const data=row as Record<string,unknown>,base=snapshot(period);
     const prefixes=['smart_trader','whale','public_figure'];
-    const hasWarnings=Array.isArray(body.warnings)&&body.warnings.length>0;
+    const warnings=Array.isArray(body.warnings)?body.warnings.filter((w):w is string=>typeof w==='string'):[];
+    const affected=(prefix:string)=>warnings.some(w=>w.toLowerCase().includes(prefix));
     // Keep upstream diagnostics in private runtime logs without exposing the
     // API key or entire response to public visitors.
-    console.info('[nansen-flow]',JSON.stringify({period,requestId,warnings:body.warnings??[],cohorts:Object.fromEntries(prefixes.map(prefix=>[prefix,{
+    console.info('[nansen-flow]',JSON.stringify({period,requestId,warnings,cohorts:Object.fromEntries(prefixes.map(prefix=>[prefix,{
      netFlowUsd:data[prefix+'_net_flow_usd']??null,walletCount:data[prefix+'_wallet_count']??null,
     }]))}));
     result={period,source:'api',asOf:new Date().toISOString(),cohorts:base.cohorts.map((c,i)=>{
      const flow=data[prefixes[i]+'_net_flow_usd'],wallets=data[prefixes[i]+'_wallet_count'];
      const measured=typeof flow==='number'&&Number.isFinite(flow);
-     // A zero/zero cohort in a warned response is not evidence of inactivity.
-     // The holder-balance endpoint can still report wallet changes in this window.
-     const unverified=hasWarnings&&flow===0&&wallets===0;
+     // Warnings about unrelated exchange/fresh-wallet counts do not invalidate this cohort.
+     const unverified=affected(prefixes[i])&&flow===0&&wallets===0;
      return {...c,flow:measured&&!unverified?flow:null,wallets:typeof wallets==='number'&&Number.isFinite(wallets)&&!unverified?wallets:null,status:measured&&!unverified?'measured':'missing'};
     })};
     if(result.cohorts.every(c=>c.status==='missing'))result.warning='Nansen returned no usable cohort values for this window.';
-    if(hasWarnings)result.warning='Nansen reports a data-quality warning. Zero-flow cohorts with no flow wallets are unverified; check the holder view for balance changes.';
+    if(prefixes.some(affected))result.warning='Nansen warned about a cohort measurement. Check the holder view for balance changes.';
    }
   }
  }finally{
