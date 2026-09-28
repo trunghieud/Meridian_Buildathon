@@ -10,12 +10,12 @@ export function snapshot(period:Period):Meeting{
  return {period,asOf:'2026-09-25T16:13:00Z',source:'snapshot',cohorts:people.map(([id,name,role],i)=>({id,name,role,flow:flows[i],wallets:wallets[i],status:flows[i]!==null?'measured':period==='1h'&&i===0?'missing':'quiet'}))};
 }
 export function money(n:number|null){return n===null?'—':(n<0?'−':n>0?'+':'')+'$'+new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Math.abs(n));}
-export function statusLabel(c:Cohort){return c.status==='missing'?'Data unavailable':c.status==='quiet'?'No significant net flow':c.flow!>0?'Net inflow':c.flow!<0?'Net outflow':'Balanced net flow';}
+export function statusLabel(c:Cohort){return c.status==='missing'?'Data unavailable':c.status==='quiet'?'No significant net flow':c.flow!>0?'Net inflow':c.flow!<0?'Net outflow':c.wallets===0?'No flow activity reported':'Zero net flow';}
 export function joke(c:Cohort){
  if(c.status==='missing')return 'The spreadsheet is buffering. No motion will be passed on vibes alone.';
  if(c.status==='quiet')return c.id==='whale'?'Chair reinforced. Motion not detected.':'The cameras are ready. The wallets are keeping a low profile.';
  if(c.flow!<0)return c.id==='smart'?'The spreadsheets have requested an exit interview.':c.id==='whale'?'A large withdrawal. The chair is finally recovering.':'The publicity department has left through the side door.';
- if(c.flow===0)return 'Perfectly balanced. Nobody gets to claim victory.';
+ if(c.flow===0)return c.wallets===0?'No flow activity reported this round. The shareholders may still be in the building.':'Inflows and outflows netted to zero. Nobody gets to claim victory.';
  return c.id==='smart'?'They brought spreadsheets to a BONER meeting. And positive net flows.':c.id==='whale'?'Exposure is increasing. So is the furniture budget.':'The VIP delegation is increasing its exposure. Cameras, please.';
 }
 export function verdict(m:Meeting){
