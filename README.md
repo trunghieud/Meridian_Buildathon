@@ -1,48 +1,66 @@
-# Nansen Meridian Buildathon: The BONER Boardroom
+# The BONER Boardroom
 
-An animated, satirical shareholder meeting and Morning Wood Report powered by Nansen token-flow analytics.
+A satirical shareholder meeting for BONER on Robinhood Chain. The dashboard compares Nansen's Smart Trader, Whale, and Public Figure net flows across 1-hour, 24-hour, and 7-day windows. It includes a flow-history chart, an on-demand PNG briefing, and optional spoken commentary.
 
-GitHub repository: `trunghieud/Meridian_Buildathon`.
+[View the original demo](https://meridian-buildathon.vercel.app) · [Nansen Flow Intelligence documentation](https://docs.nansen.ai/api/token-god-mode/flow-intelligence)
 
-## Local development
+This project was built for the 2026 Meridian Buildathon but was **not submitted**. It is available to fork and develop further.
 
-Node.js 22 or later, pnpm. Run `pnpm install --frozen-lockfile`, then `pnpm dev`.
-Production: `pnpm build`, then `pnpm start`.
+## Run a fork locally
 
-## Vercel deployment
+Requires Node.js 22.13+ and pnpm 11. Click **Fork** on this repository in GitHub, then clone your fork:
 
-The public Next.js deployment is at https://meridian-buildathon.vercel.app. The root is the repository root. Build command: `pnpm build`. No custom output directory.
+```bash
+git clone https://github.com/YOUR_USERNAME/Meridian_Buildathon.git
+cd Meridian_Buildathon
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
+```
 
-For live data, create a key at https://app.nansen.ai/api and set `NANSEN_API_KEY` as a sensitive server-side Vercel environment variable for Production (and Preview if needed). Never prefix it with NEXT_PUBLIC_, commit it, or put it in browser code. Connect Upstash Redis to this Vercel project for Production: the integration-injected `UPSTASH_REDIS_REST_KV_REST_API_URL` and `UPSTASH_REDIS_REST_KV_REST_API_TOKEN` are accepted automatically. The shorter `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` also work when set manually. Set `NANSEN_MAX_API_CALLS` to a positive hard limit; the site deliberately stays on its dated snapshot until both the key and durable budget are present. Set a separate random `NANSEN_USAGE_ADMIN_TOKEN` to read the private usage report. Redeploy after changing environment variables.
+Open `http://localhost:3000`. Without credentials, the meeting displays a **dated September 25, 2026 snapshot**, so you can explore the UI immediately. The separate trading-floor statistics are also a fixed, dated snapshot. They do not refresh with the API.
 
-### Scheduled collection
+## Enable live Nansen data
 
-The GitHub Actions workflow in `.github/workflows/collect-flow-history.yml` visits the public meeting endpoint for its 1-hour, 24-hour and 7-day windows at two-, four-, and ten-minute intervals inside a five-hour scheduled run, stopping no later than September 27, 2026 at 23:59 UTC. GitHub's twice-hourly schedule may be delayed or dropped; long-running jobs make progress even when triggers are sparse. Each observation uses a unique query parameter to bypass older Vercel CDN entries while respecting the server's per-period cache. Each fresh, usable Nansen response is archived in Upstash (up to 1,200 observations per window), and `/api/history?period=1h` exposes the latest 72 for the dashboard trend. The updated server caches the periods for 100, 220 and 540 seconds respectively; earlier deployments use a four-minute warm cache. Vercel's Hobby cron cannot run this frequently. Check the Actions run log and Nansen usage analytics; this schedule cannot guarantee a target number of qualifying calls. No GitHub secret is needed because the meeting endpoint is already public. The atomic Redis reservation stops outbound requests at `NANSEN_MAX_API_CALLS`, including manual dashboard requests. The workflow can also be started with **Run workflow** for an immediate collector run.
+1. Get a Nansen API key from [Nansen](https://app.nansen.ai/api). Create an Upstash Redis database, either directly or through the Vercel integration. Each fork should use its own Redis database so its usage budget and history are independent.
+2. Copy `.env.example` to `.env.local` and fill in the server-side values:
 
-Verify with `GET /api/meeting?period=1d`: `source: "api"` and a current `asOf` mean a live Nansen response was parsed. `source: "snapshot"` plus `warning` explains why live refresh is unavailable. Check the guarded counter with `curl -H 'Authorization: Bearer <YOUR_ADMIN_TOKEN>' https://meridian-buildathon.vercel.app/api/usage`. `requests` counts actual outbound attempts reserved before dispatch; `succeeded` counts 2xx replies; `usable` counts 2xx replies with at least one measured cohort; `reportedCredits` sums the optional Nansen cost response header. Public responses and the browser's 15-minute cache do not increment these counters. Nansen's own usage analytics at https://app.nansen.ai/api?tab=usage-analytics is authoritative for eligibility and billing.
+   | Variable | Purpose |
+   | --- | --- |
+   | `NANSEN_API_KEY` | Your private Nansen API key. |
+   | `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` | REST endpoint and token for your Upstash database. The Vercel integration's `UPSTASH_REDIS_REST_KV_REST_API_URL` and `UPSTASH_REDIS_REST_KV_REST_API_TOKEN` are accepted instead. |
+   | `NANSEN_MAX_API_CALLS` | Positive integer: maximum **outbound attempts** across all app instances and deployments sharing that Redis database. Start with a small amount you are willing to consume. Unset or `0` disables live calls. |
+   | `NANSEN_USAGE_ADMIN_TOKEN` | Optional private token for `/api/usage`. Generate one with `openssl rand -hex 32`. |
 
-## Branding and voice
+3. Restart `pnpm dev`. Never commit `.env.local`, place credentials in client code, or use a `NEXT_PUBLIC_` prefix for these values.
 
-- User-supplied BONER sunglasses/laurel face is the official logo reference, used in the header, favicon, public-figure avatar and PNG card.
-- The boardroom star is replaced with the BONER marble character.
-- The gold framed portrait is a keyboard-accessible link to https://boneronlong.xyz/ and opens in a new tab.
-- The chairman selects a recognized English male system voice (Daniel/Guy/George preferred), with slower, lower delivery. Web Speech does not expose a standard gender property; names are matched conservatively. If no recognized male voice exists, the app explains how to enable one rather than falling back to an arbitrary voice. Audio is never autoplayed. Voice identity and timbre depend on the device.
-- All source photos were provided by the owner. Generated adaptations preserve their intended branding. The scene includes subtle interface motion rather than independently rigged character animation.
+The app reserves a call in Redis *before* contacting Nansen. If the budget is exhausted or Redis is unavailable, it falls back to the dated snapshot. A reservation still counts when the upstream request fails or times out. Responses are cached per window, so refreshing a page does not necessarily spend a call. History is stored in Redis only for usable API responses; a new database starts with an empty chart.
 
-## Data
+### Check your setup
 
-BONER / Robinhood Chain: `0x98096d17e191b3da1d5f99a6d7b3584351b11e18`.
+With the app running, visit `http://localhost:3000/api/meeting?period=1d`. A response with `"source":"api"` and a recent `asOf` is a live observation. `"source":"snapshot"` and `warning` explain a fallback. Check `http://localhost:3000/api/history?period=1d` for collected history. If you configured the admin token, read usage privately:
 
-Initial observations are dated September 25, 2026 at 16:13 UTC. 24h Smart Trader net flow: approximately +$73.7K across 4 active wallets. 7d: Smart Traders +$143.9K (27 wallets), Public Figures +$167.6K (5 wallets). Whale summaries reported no significant net flow. Missing and unquantified data are never fabricated as zero. Cohorts may overlap; flow is not equivalent to a DEX purchase. The separate trading panel is a fixed, explicitly dated launch snapshot.
+```bash
+curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  http://localhost:3000/api/usage
+```
 
-`GET /api/meeting?period=1h|1d|7d` uses the Nansen Flow Intelligence API when a key and durable budget are present. Upstash atomically reserves one outbound request before each Nansen fetch across all Vercel instances. A missing or unreachable counter fails closed. Responses use period-specific Vercel CDN and warm-instance caching (100, 220 and 540 seconds respectively) and in-flight deduplication. API errors fall back visibly to the dated snapshot. The scheduled collector stops at the campaign deadline or when the durable call budget is reached. No automatic social posting is enabled.
+`requests` counts reserved outbound attempts; `succeeded` counts successful HTTP replies; `usable` counts replies containing at least one measured cohort. `reportedCredits` sums the optional Nansen response header. Your Nansen account's usage page is the authority for actual credits or billing. Do not put the admin token in a public URL or issue report.
 
-The share card is generated on demand and always uses 24h data. It includes observation timestamp and attribution. Daily scheduling and persistent archives are not implemented.
+## Deploy your fork on Vercel
 
-## Buildathon remaining work
+1. Import **your fork** as a new Vercel project. Use the repository root, Next.js framework, `pnpm build`, and the default Next.js output setting.
+2. Add `NANSEN_API_KEY`, your Upstash REST credentials, and a modest `NANSEN_MAX_API_CALLS` in Vercel's **Production** environment variables. Add `NANSEN_USAGE_ADMIN_TOKEN` if you want the private usage report. Configure Preview separately if you intend to use live data there; shared Redis means Preview calls consume the same budget.
+3. Deploy or redeploy after saving variables. Visit your deployment's `/api/meeting?period=1d` to verify the `source`, `asOf`, and any `warning` as described above. The original demo's Vercel settings and secrets do **not** transfer to a fork.
 
-1. Configure and verify the API key, Upstash Redis, and call budget as above.
-2. Check actual qualifying calls in Nansen usage analytics. The campaign page says 1,000 calls, while Nansen's help article says 100+. Use the stricter target until Nansen resolves the conflict; local counters alone are not proof of qualification. Claim the buildathon's available API credits before running any collection.
-3. Record a 30–60 second silent-friendly demo showing live Nansen data, post it on X tagging `@nansen_ai` and linking this public repository, then submit email, X post URL, and GitHub URL in the official entry form by September 27, 2026 at 23:59 UTC.
+## About the old collector workflow
 
-Research connector calls are not assumed to count toward eligibility. Follow Nansen's redistribution guidelines; this version uses aggregate flow data with attribution, not restricted individual Smart Money wallet lists or the raw Address Labels endpoint.
+`.github/workflows/collect-flow-history.yml` is an **archived buildathon collector**. It hard-codes the original demo URL and a cutoff of September 27, 2026 at 23:59 UTC. It will not collect useful observations after that date, even if GitHub runs it. **Do not point it at your deployment unchanged.** For ongoing collection, replace its URL and cutoff, choose a schedule and budget suitable for your account, and inspect the Actions logs plus `/api/usage`. The app itself can collect observations from normal dashboard visits without this workflow.
+
+## What to customize
+
+- `lib/boardroom.ts` contains the BONER token address (`0x98096d17e191b3da1d5f99a6d7b3584351b11e18`), snapshot, labels, and meeting copy. If you change the token, replace the snapshot and other dated copy as well.
+- `app/page.tsx` contains the dashboard, the fixed trading-floor panel, and the briefing PNG. `lib/artwork.ts` and `app/api/art/[name]/route.ts` serve the embedded branded art. Replace the branding and check your rights before reusing it in a new project.
+- `app/api/meeting/route.ts` handles Nansen calls and caching. `lib/nansen-usage.ts` handles the Redis budget, audit counters, and history. `app/api/history/route.ts` exposes chart points; `app/api/usage/route.ts` requires the admin token.
+
+Net flows are transfers, not confirmed buys; cohorts may overlap. Missing values are not zero. The briefing is downloaded on demand and never posted automatically. Spoken commentary uses the browser's available English male system voices and may be unavailable on some devices.
