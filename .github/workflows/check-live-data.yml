@@ -1,0 +1,26 @@
+name: Check live Nansen data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check production meeting source
+        run: |
+          python - <<'PY'
+          import datetime, json, urllib.request
+
+          url = ('https://meridian-buildathon.vercel.app/api/meeting'
+                 '?period=1d&check=' + str(int(datetime.datetime.now(datetime.timezone.utc).timestamp())))
+          with urllib.request.urlopen(url, timeout=35) as response:
+              data = json.load(response)
+          print(json.dumps({key: data.get(key) for key in ('period', 'source', 'asOf', 'warning')}))
+          if data.get('source') != 'api':
+              raise SystemExit('Production is displaying a dated snapshot, not a live API observation.')
+          PY
