@@ -35,13 +35,17 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
    if(row&&typeof row==='object'){
     const data=row as Record<string,unknown>,base=snapshot(period);
     const prefixes=['smart_trader','whale','public_figure'];
+    const hasWarnings=Array.isArray(body.warnings)&&body.warnings.length>0;
     result={period,source:'api',asOf:new Date().toISOString(),cohorts:base.cohorts.map((c,i)=>{
      const flow=data[prefixes[i]+'_net_flow_usd'],wallets=data[prefixes[i]+'_wallet_count'];
      const measured=typeof flow==='number'&&Number.isFinite(flow);
-     return {...c,flow:measured?flow:null,wallets:typeof wallets==='number'&&Number.isFinite(wallets)?wallets:null,status:measured?'measured':'missing'};
+     // A zero/zero cohort in a warned response is not evidence of inactivity.
+     // The holder-balance endpoint can still report wallet changes in this window.
+     const unverified=hasWarnings&&flow===0&&wallets===0;
+     return {...c,flow:measured&&!unverified?flow:null,wallets:typeof wallets==='number'&&Number.isFinite(wallets)&&!unverified?wallets:null,status:measured&&!unverified?'measured':'missing'};
     })};
     if(result.cohorts.every(c=>c.status==='missing'))result.warning='Nansen returned no usable cohort values for this window.';
-    if(Array.isArray(body.warnings)&&body.warnings.length)result.warning='Nansen reports a data-quality warning. Treat this observation as partial.';
+    if(hasWarnings)result.warning='Nansen reports a data-quality warning. Zero-flow cohorts with no flow wallets are unverified; check the holder view for balance changes.';
    }
   }
  }finally{
