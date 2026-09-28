@@ -36,6 +36,11 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
     const data=row as Record<string,unknown>,base=snapshot(period);
     const prefixes=['smart_trader','whale','public_figure'];
     const hasWarnings=Array.isArray(body.warnings)&&body.warnings.length>0;
+    // Keep upstream diagnostics in private runtime logs without exposing the
+    // API key or entire response to public visitors.
+    console.info('[nansen-flow]',JSON.stringify({period,requestId,warnings:body.warnings??[],cohorts:Object.fromEntries(prefixes.map(prefix=>[prefix,{
+     netFlowUsd:data[prefix+'_net_flow_usd']??null,walletCount:data[prefix+'_wallet_count']??null,
+    }]))}));
     result={period,source:'api',asOf:new Date().toISOString(),cohorts:base.cohorts.map((c,i)=>{
      const flow=data[prefixes[i]+'_net_flow_usd'],wallets=data[prefixes[i]+'_wallet_count'];
      const measured=typeof flow==='number'&&Number.isFinite(flow);
