@@ -2,7 +2,7 @@ name: Collect BONER boardroom data
 
 on:
   schedule:
-    # 17:07 UTC daily. Public endpoints enforce their own budget and holder cooldown.
+    # 17:07 UTC daily. Public endpoints enforce their own budget and cooldown.
     - cron: '7 17 * * *'
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Capture 24-hour cohort flows and top 40 holders
+      - name: Capture cohort flows, top 40 balances, and total holder count
         env:
           BOARDROOM_URL: ${{ vars.BOARDROOM_URL }}
           REPOSITORY: ${{ github.repository }}
@@ -30,7 +30,7 @@ jobs:
               print('Set the BOARDROOM_URL repository variable to collect from your fork.')
               raise SystemExit(0)
           stamp = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
-          for route in ('/api/meeting?period=1d&collection=' + stamp, '/api/top-holders'):
+          for route in ('/api/meeting?period=1d&collection=' + stamp, '/api/top-holders', '/api/holder-count'):
               with urllib.request.urlopen(base + route, timeout=40) as response:
                   data = json.load(response)
               if route.startswith('/api/meeting'):
@@ -38,11 +38,17 @@ jobs:
                       raise RuntimeError('Four live cohort measurements were not returned: ' + str(data.get('warning')))
                   print(json.dumps({'route': 'meeting', 'asOf': data['asOf'],
                                     'cohorts': {c['id']: c['flow'] for c in data['cohorts']}}))
-              else:
+              elif route == '/api/top-holders':
                   snapshot = data.get('snapshot')
                   if not snapshot or not 1 <= snapshot.get('count', 0) <= 40:
                       raise RuntimeError('Top holder observation unavailable: ' + str(data.get('warning')))
                   print(json.dumps({'route': 'top-holders', 'asOf': snapshot['asOf'],
                                     'count': snapshot['count'], 'totalTokens': snapshot['totalTokens'],
                                     'change24h': snapshot['change24h']}))
+              else:
+                  snapshot = data.get('snapshot')
+                  if not snapshot or not isinstance(snapshot.get('totalHolders'), int):
+                      raise RuntimeError('Total holder count unavailable: ' + str(data.get('warning')))
+                  print(json.dumps({'route': 'holder-count', 'asOf': snapshot['asOf'],
+                                    'totalHolders': snapshot['totalHolders']}))
           PY

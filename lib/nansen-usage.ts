@@ -13,9 +13,14 @@ const HOLDERS=`${PREFIX}:top40:latest`;
 const HOLDERS_HISTORY=`${PREFIX}:top40:history`;
 const HOLDERS_LAST=`${PREFIX}:top40:last-success`;
 const HOLDERS_ATTEMPT=`${PREFIX}:top40:attempt`;
+const HOLDER_COUNT=`${PREFIX}:holder-count:latest`;
+const HOLDER_COUNT_HISTORY=`${PREFIX}:holder-count:history`;
+const HOLDER_COUNT_DAY=`${PREFIX}:holder-count:last-day`;
+const HOLDER_COUNT_ATTEMPT=`${PREFIX}:holder-count:attempt`;
 
 export type TopHolder={address:string;tokenAmount:number;balanceChange24h:number|null;valueUsd:number|null};
 export type TopHolders={asOf:string;source:'api';wallets:TopHolder[];totalTokens:number;change24h:number|null;count:number};
+export type HolderCount={asOf:string;source:'api';totalHolders:number};
 
 // Holder USD values are a spot valuation. Applying their implied price to the
 // token delta estimates its current value, not realized net flow or profit.
@@ -69,10 +74,10 @@ export async function reserveNansenCall():Promise<boolean>{
  return Number(response.result[0])===1;
 }
 
-export async function recordNansenCall(status:number,usable:boolean,credits:number|null,period:Period|'holders',requestId:string|null,meeting?:Meeting|null){
+export async function recordNansenCall(status:number,usable:boolean,credits:number|null,period:Period|'holders'|'holder-count',requestId:string|null,meeting?:Meeting|null){
  const entry=JSON.stringify({at:new Date().toISOString(),period,status,usable,credits,requestId});
  const commands:(string|number)[][]=[['LPUSH',AUDIT,entry],['LTRIM',AUDIT,0,199]];
- if(meeting?.source==='api'&&usable&&period!=='holders'){
+ if(meeting?.source==='api'&&usable&&period!=='holders'&&period!=='holder-count'){
   const point=JSON.stringify({at:meeting.asOf,period,cohorts:meeting.cohorts.map(c=>({id:c.id,flow:c.flow,status:c.status})),warning:meeting.warning??null});
   commands.push(['LPUSH',HISTORY(period),point],['LTRIM',HISTORY(period),0,1199]);
  }
@@ -121,6 +126,34 @@ export async function readTopHoldersHistory(){
   const point=JSON.parse(String(row)) as TopHolders;
   return {asOf:point.asOf,totalTokens:point.totalTokens,change24h:point.change24h,count:point.count,...holderUsdMetrics(point)};
  }).reverse();
+}
+
+export async function readHolderCount():Promise<HolderCount|null>{
+ const response=await command('', ['GET',HOLDER_COUNT]) as {result?:unknown};
+ return typeof response.result==='string'?JSON.parse(response.result) as HolderCount:null;
+}
+
+export async function reserveHolderCountRefresh():Promise<boolean>{
+ const day=new Date().toISOString().slice(0,10);
+ const gate=`if redis.call('GET',KEYS[1])==ARGV[1] then return 0 end
+if not redis.call('SET',KEYS[2],ARGV[1],'NX','EX',3600) then return 0 end
+return 1`;
+ const response=await command('', ['EVAL',gate,'2',HOLDER_COUNT_DAY,HOLDER_COUNT_ATTEMPT,day]) as {result?:unknown};
+ return Number(response.result)===1;
+}
+
+export async function storeHolderCount(snapshot:HolderCount){
+ const response=await command('/multi-exec',[
+  ['SET',HOLDER_COUNT,JSON.stringify(snapshot)],['SET',HOLDER_COUNT_DAY,snapshot.asOf.slice(0,10)],
+  ['LPUSH',HOLDER_COUNT_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDER_COUNT_HISTORY,0,364],
+ ]) as Array<{error?:string}>;
+ if(!Array.isArray(response)||response.some(x=>x.error))throw new Error('Holder count could not be persisted');
+}
+
+export async function readHolderCountHistory():Promise<HolderCount[]>{
+ const response=await command('', ['LRANGE',HOLDER_COUNT_HISTORY,0,364]) as {result?:unknown};
+ if(!Array.isArray(response.result))throw new Error('Unexpected holder count history reply');
+ return response.result.map(row=>JSON.parse(String(row)) as HolderCount).reverse();
 }
 
 export async function readNansenUsage(){
