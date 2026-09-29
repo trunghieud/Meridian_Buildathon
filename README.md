@@ -34,11 +34,11 @@ Open `http://localhost:3000`. Without credentials, the meeting displays a **date
 
 3. Restart `pnpm dev`. Never commit `.env.local`, place credentials in client code, or use a `NEXT_PUBLIC_` prefix for these values.
 
-The app reserves a call in Redis *before* contacting Nansen. If the budget is exhausted or Redis is unavailable, it falls back to the dated snapshot. A reservation still counts when the upstream request fails or times out. Flow responses are cached per window. The top-40 route permits one successful holder observation per 24 hours and limits retries after failure to one per hour. History and the latest wallet list are stored in Redis. The app budget counts calls, while Nansen bills Flow Intelligence at 1 credit and Holders at 5 credits per successful standard request; check your account balance separately.
+The app reserves a call in Redis *before* contacting Nansen. If the budget is exhausted or Redis is unavailable, it falls back to the dated snapshot. A reservation still counts when the upstream request fails or times out. Flow responses are cached per window. The top-40 route permits one successful holder observation per 24 hours and limits retries after failure to one per hour. The latest wallet list and up to 90 full daily snapshots are stored in Redis; the website shows the last 30 daily summaries. The app budget counts calls, while Nansen bills Flow Intelligence at 1 credit and Holders at 5 credits per successful standard request; check your account balance separately.
 
 ### Check your setup
 
-With the app running, visit `http://localhost:3000/api/meeting?period=1d`. A response with `"source":"api"`, four cohorts, and a recent `asOf` is a live observation. `"source":"snapshot"` and `warning` explain a fallback. Check `/api/top-holders` for `snapshot.wallets` and `/api/history?period=1d` for collected flow history. If you configured the admin token, read usage privately:
+With the app running, visit `http://localhost:3000/api/meeting?period=1d`. A response with `"source":"api"`, four cohorts, and a recent `asOf` is a live observation. `"source":"snapshot"` and `warning` explain a fallback. Check `/api/top-holders` for `snapshot.wallets`, `/api/top-holders/history` for daily summaries, and `/api/history?period=1d` for collected flow history. If you configured the admin token, read usage privately:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \

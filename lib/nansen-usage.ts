@@ -10,6 +10,7 @@ const CREDITS=`${PREFIX}:credits`;
 const AUDIT=`${PREFIX}:recent`;
 const HISTORY=(period:Period)=>`${PREFIX}:history:${period}`;
 const HOLDERS=`${PREFIX}:top40:latest`;
+const HOLDERS_HISTORY=`${PREFIX}:top40:history`;
 const HOLDERS_LAST=`${PREFIX}:top40:last-success`;
 const HOLDERS_ATTEMPT=`${PREFIX}:top40:attempt`;
 
@@ -95,8 +96,18 @@ export async function reserveTopHoldersRefresh():Promise<boolean>{
 export async function storeTopHolders(snapshot:TopHolders){
  const response=await command('/multi-exec',[
   ['SET',HOLDERS,JSON.stringify(snapshot)],['SET',HOLDERS_LAST,String(Math.floor(new Date(snapshot.asOf).getTime()/1000))],
+  ['LPUSH',HOLDERS_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDERS_HISTORY,0,89],
  ]) as Array<{error?:string}>;
  if(!Array.isArray(response)||response.some(x=>x.error))throw new Error('Holder snapshot could not be persisted');
+}
+
+export async function readTopHoldersHistory(){
+ const response=await command('', ['LRANGE',HOLDERS_HISTORY,0,29]) as {result?:unknown};
+ if(!Array.isArray(response.result))throw new Error('Unexpected holder history reply');
+ return response.result.map(row=>{
+  const point=JSON.parse(String(row)) as TopHolders;
+  return {asOf:point.asOf,totalTokens:point.totalTokens,change24h:point.change24h,count:point.count};
+ }).reverse();
 }
 
 export async function readNansenUsage(){
