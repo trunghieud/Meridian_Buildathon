@@ -1,72 +1,48 @@
-name: Collect BONER flow history
+name: Collect BONER boardroom data
 
 on:
   schedule:
-    # An accepted run collects for several hours even if later scheduled runs are dropped.
-    - cron: '7,37 * * * *'
+    # 17:07 UTC daily. Public endpoints enforce their own budget and holder cooldown.
+    - cron: '7 17 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: boner-flow-collection-v2
+  group: boner-daily-collection
   cancel-in-progress: false
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 3
     steps:
-      - name: Capture cohort trends until the campaign ends or the call cap is reached
+      - name: Capture 24-hour cohort flows and top 40 holders
         env:
-          BOARDROOM_URL: https://meridian-buildathon.vercel.app
+          BOARDROOM_URL: ${{ vars.BOARDROOM_URL }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          python -u - <<'PY'
-          import datetime, json, os, time, urllib.error, urllib.request
-
-          utc = datetime.timezone.utc
-          cutoff = datetime.datetime(2026, 9, 27, 23, 59, tzinfo=utc)
-          end = min(cutoff, datetime.datetime.now(utc) + datetime.timedelta(hours=5))
-          consecutive_errors = 0
-          tick = 0
-          while datetime.datetime.now(utc) < end:
-              periods = ['1h']
-              if tick % 2 == 0:
-                  periods.append('1d')
-              if tick % 5 == 0:
-                  periods.append('7d')
-              for period in periods:
-                  if datetime.datetime.now(utc) >= cutoff:
-                      break
-                  # A distinct URL per observation avoids the CDN's older 15-minute cache.
-                  # The server still deduplicates and caches each period before any API call.
-                  cache_key = str(int(datetime.datetime.now(utc).timestamp()))
-                  url = os.environ['BOARDROOM_URL'] + '/api/meeting?period=' + period + '&collection=' + cache_key
-                  request = urllib.request.Request(url, headers={'User-Agent': 'Meridian-Buildathon-Collector/1.0'})
-                  try:
-                      with urllib.request.urlopen(request, timeout=35) as response:
-                          meeting = json.load(response)
-                      warning = meeting.get('warning') or ''
-                      print(json.dumps({'at': datetime.datetime.now(utc).isoformat(), 'period': period,
-                                        'source': meeting.get('source'), 'asOf': meeting.get('asOf'),
-                                        'warning': warning}), flush=True)
-                      if meeting.get('source') == 'api':
-                          consecutive_errors = 0
-                      elif 'budget has been reached' in warning:
-                          print('Atomic Redis call budget reached. Stopping.', flush=True)
-                          raise SystemExit(0)
-                      else:
-                          consecutive_errors += 1
-                  except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-                      consecutive_errors += 1
-                      print('Collection error: ' + str(exc), flush=True)
-                  if consecutive_errors >= 5:
-                      raise RuntimeError('Five consecutive observations failed; inspect deployment and Nansen balance.')
-                  time.sleep(1)
-              tick += 1
-              remaining = (end - datetime.datetime.now(utc)).total_seconds()
-              if remaining > 0:
-                  time.sleep(min(120, remaining))
-          print('Collection window ended.', flush=True)
+          python - <<'PY'
+          import datetime, json, os, urllib.request
+          base = os.environ['BOARDROOM_URL'] or ('https://meridian-buildathon.vercel.app' if os.environ['REPOSITORY'] == 'trunghieud/Meridian_Buildathon' else '')
+          if not base:
+              print('Set the BOARDROOM_URL repository variable to collect from your fork.')
+              raise SystemExit(0)
+          stamp = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
+          for route in ('/api/meeting?period=1d&collection=' + stamp, '/api/top-holders'):
+              with urllib.request.urlopen(base + route, timeout=40) as response:
+                  data = json.load(response)
+              if route.startswith('/api/meeting'):
+                  if data.get('source') != 'api' or len(data.get('cohorts', [])) != 4:
+                      raise RuntimeError('Four live cohort measurements were not returned: ' + str(data.get('warning')))
+                  print(json.dumps({'route': 'meeting', 'asOf': data['asOf'],
+                                    'cohorts': {c['id']: c['flow'] for c in data['cohorts']}}))
+              else:
+                  snapshot = data.get('snapshot')
+                  if not snapshot or not 1 <= snapshot.get('count', 0) <= 40:
+                      raise RuntimeError('Top holder observation unavailable: ' + str(data.get('warning')))
+                  print(json.dumps({'route': 'top-holders', 'asOf': snapshot['asOf'],
+                                    'count': snapshot['count'], 'totalTokens': snapshot['totalTokens'],
+                                    'change24h': snapshot['change24h']}))
           PY

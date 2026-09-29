@@ -34,9 +34,9 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
    const row=Array.isArray(body.data)?body.data[0]:body.data;
    if(row&&typeof row==='object'){
     const data=row as Record<string,unknown>,base=snapshot(period);
-    const prefixes=['smart_trader','whale','public_figure'];
+    const prefixes=['smart_trader','whale','public_figure','exchange'];
     const warnings=Array.isArray(body.warnings)?body.warnings.filter((w):w is string=>typeof w==='string'):[];
-    const affected=(prefix:string)=>warnings.some(w=>w.toLowerCase().includes(prefix));
+    const affected=(prefix:string)=>warnings.some(w=>w.toLowerCase().includes(prefix)&&!w.includes('wallet_count is always 0'));
     // Keep upstream diagnostics in private runtime logs without exposing the
     // API key or entire response to public visitors.
     console.info('[nansen-flow]',JSON.stringify({period,requestId,warnings,cohorts:Object.fromEntries(prefixes.map(prefix=>[prefix,{
@@ -47,7 +47,8 @@ async function fetchMeeting(period:Period,apiKey:string):Promise<Meeting>{
      const measured=typeof flow==='number'&&Number.isFinite(flow);
      // Warnings about unrelated exchange/fresh-wallet counts do not invalidate this cohort.
      const unverified=affected(prefixes[i])&&flow===0&&wallets===0;
-     return {...c,flow:measured&&!unverified?flow:null,wallets:typeof wallets==='number'&&Number.isFinite(wallets)&&!unverified?wallets:null,status:measured&&!unverified?'measured':'missing'};
+     // Nansen explicitly does not track exchange wallet counts; zero there is not an activity count.
+     return {...c,flow:measured&&!unverified?flow:null,wallets:c.id==='exchange'?null:typeof wallets==='number'&&Number.isFinite(wallets)&&!unverified?wallets:null,status:measured&&!unverified?'measured':'missing'};
     })};
     if(result.cohorts.every(c=>c.status==='missing'))result.warning='Nansen returned no usable cohort values for this window.';
     if(prefixes.some(affected))result.warning='Nansen warned about a cohort measurement. Check the holder view for balance changes.';

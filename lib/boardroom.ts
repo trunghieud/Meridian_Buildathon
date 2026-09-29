@@ -3,20 +3,20 @@ export type Period='1h'|'1d'|'7d';
 export type Cohort={id:string;name:string;role:string;flow:number|null;wallets:number|null;status:'measured'|'quiet'|'missing'};
 export type Meeting={period:Period;asOf:string;source:'snapshot'|'api';cohorts:Cohort[];warning?:string};
 export const PERIOD_NAMES={'1h':'1 hour','1d':'24 hours','7d':'7 days'};
-const people=[['smart','Smart Traders','The spreadsheet delegation'],['whale','Whales','The reinforced-chair committee'],['public','Public Figures','The publicity department']];
+const people=[['smart','Smart Traders','The spreadsheet delegation'],['whale','Whales','The reinforced-chair committee'],['public','Public Figures','The publicity department'],['exchange','Exchanges','The clearing desk']];
 export function snapshot(period:Period):Meeting{
- const flows=period==='7d'?[143900,null,167600]:period==='1d'?[73700,null,null]:[null,null,null];
- const wallets=period==='7d'?[27,null,5]:period==='1d'?[4,null,null]:[null,null,null];
- return {period,asOf:'2026-09-25T16:13:00Z',source:'snapshot',cohorts:people.map(([id,name,role],i)=>({id,name,role,flow:flows[i],wallets:wallets[i],status:flows[i]!==null?'measured':period==='1h'&&i===0?'missing':'quiet'}))};
+ const flows=period==='7d'?[143900,null,167600,null]:period==='1d'?[73700,null,null,null]:[null,null,null,null];
+ const wallets=period==='7d'?[27,null,5,null]:period==='1d'?[4,null,null,null]:[null,null,null,null];
+ return {period,asOf:'2026-09-25T16:13:00Z',source:'snapshot',cohorts:people.map(([id,name,role],i)=>({id,name,role,flow:flows[i],wallets:wallets[i],status:flows[i]!==null?'measured':'missing'}))};
 }
 export function money(n:number|null){return n===null?'—':(n<0?'−':n>0?'+':'')+'$'+new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Math.abs(n));}
 export function statusLabel(c:Cohort){return c.status==='missing'?'Data unavailable':c.status==='quiet'?'No significant net flow':c.flow!>0?'Net inflow':c.flow!<0?'Net outflow':c.wallets===0?'No flow activity reported':'Zero net flow';}
 export function joke(c:Cohort){
  if(c.status==='missing')return 'The spreadsheet is buffering. No motion will be passed on vibes alone.';
  if(c.status==='quiet')return c.id==='whale'?'Chair reinforced. Motion not detected.':'The cameras are ready. The wallets are keeping a low profile.';
- if(c.flow!<0)return c.id==='smart'?'The spreadsheets have requested an exit interview.':c.id==='whale'?'A large withdrawal. The chair is finally recovering.':'The publicity department has left through the side door.';
- if(c.flow===0)return c.wallets===0?'No flow activity reported this round. The shareholders may still be in the building.':'Inflows and outflows netted to zero. Nobody gets to claim victory.';
- return c.id==='smart'?'They brought spreadsheets to a BONER meeting. And positive net flows.':c.id==='whale'?'Exposure is increasing. So is the furniture budget.':'The VIP delegation is increasing its exposure. Cameras, please.';
+ if(c.flow!<0)return c.id==='smart'?'The spreadsheets have requested an exit interview.':c.id==='whale'?'A large withdrawal. The chair is finally recovering.':c.id==='exchange'?'Tokens are leaving exchanges. The clearing desk is taking notes.':'The publicity department has left through the side door.';
+ if(c.flow===0)return c.id==='exchange'?'No net exchange flow reported. The wallet count is not tracked.':c.wallets===0?'No flow activity reported this round. The shareholders may still be in the building.':'Inflows and outflows netted to zero. Nobody gets to claim victory.';
+ return c.id==='smart'?'They brought spreadsheets to a BONER meeting. And positive net flows.':c.id==='whale'?'Exposure is increasing. So is the furniture budget.':c.id==='exchange'?'Tokens are entering exchanges. The clearing desk is busy.':'The VIP delegation is increasing its exposure. Cameras, please.';
 }
 export function verdict(m:Meeting){
  const smart=m.cohorts[0],pub=m.cohorts[2];

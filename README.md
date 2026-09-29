@@ -1,6 +1,6 @@
 # The BONER Boardroom
 
-A satirical shareholder meeting for BONER on Robinhood Chain. The dashboard compares Nansen's Smart Trader, Whale, and Public Figure net flows across 1-hour, 24-hour, and 7-day windows. It includes a flow-history chart, an on-demand PNG briefing, and optional spoken commentary.
+A satirical shareholder meeting for BONER on Robinhood Chain. The dashboard compares Nansen's Smart Trader, Whale, Public Figure, and Exchange net flows across 1-hour, 24-hour, and 7-day windows. It also collects the top 40 wallet balances and their 24-hour token changes, a flow-history chart, an on-demand PNG briefing, and optional spoken commentary.
 
 [View the original demo](https://meridian-buildathon.vercel.app) · [Nansen Flow Intelligence documentation](https://docs.nansen.ai/api/token-god-mode/flow-intelligence)
 
@@ -34,18 +34,18 @@ Open `http://localhost:3000`. Without credentials, the meeting displays a **date
 
 3. Restart `pnpm dev`. Never commit `.env.local`, place credentials in client code, or use a `NEXT_PUBLIC_` prefix for these values.
 
-The app reserves a call in Redis *before* contacting Nansen. If the budget is exhausted or Redis is unavailable, it falls back to the dated snapshot. A reservation still counts when the upstream request fails or times out. Responses are cached per window, so refreshing a page does not necessarily spend a call. History is stored in Redis only for usable API responses; a new database starts with an empty chart.
+The app reserves a call in Redis *before* contacting Nansen. If the budget is exhausted or Redis is unavailable, it falls back to the dated snapshot. A reservation still counts when the upstream request fails or times out. Flow responses are cached per window. The top-40 route permits one successful holder observation per 24 hours and limits retries after failure to one per hour. History and the latest wallet list are stored in Redis. The app budget counts calls, while Nansen bills Flow Intelligence at 1 credit and Holders at 5 credits per successful standard request; check your account balance separately.
 
 ### Check your setup
 
-With the app running, visit `http://localhost:3000/api/meeting?period=1d`. A response with `"source":"api"` and a recent `asOf` is a live observation. `"source":"snapshot"` and `warning` explain a fallback. Check `http://localhost:3000/api/history?period=1d` for collected history. If you configured the admin token, read usage privately:
+With the app running, visit `http://localhost:3000/api/meeting?period=1d`. A response with `"source":"api"`, four cohorts, and a recent `asOf` is a live observation. `"source":"snapshot"` and `warning` explain a fallback. Check `/api/top-holders` for `snapshot.wallets` and `/api/history?period=1d` for collected flow history. If you configured the admin token, read usage privately:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   http://localhost:3000/api/usage
 ```
 
-`requests` counts reserved outbound attempts; `succeeded` counts successful HTTP replies; `usable` counts replies containing at least one measured cohort. `reportedCredits` sums the optional Nansen response header. Your Nansen account's usage page is the authority for actual credits or billing. Do not put the admin token in a public URL or issue report.
+`requests` counts reserved outbound attempts; `succeeded` counts successful HTTP replies; `usable` counts replies with usable cohort or holder data. `reportedCredits` sums the optional Nansen response header. Your Nansen account's usage page is the authority for actual credits or billing. Do not put the admin token in a public URL or issue report.
 
 ## Deploy your fork on Vercel
 
@@ -53,14 +53,14 @@ curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
 2. Add `NANSEN_API_KEY`, your Upstash REST credentials, and a modest `NANSEN_MAX_API_CALLS` in Vercel's **Production** environment variables. Add `NANSEN_USAGE_ADMIN_TOKEN` if you want the private usage report. Configure Preview separately if you intend to use live data there; shared Redis means Preview calls consume the same budget.
 3. Deploy or redeploy after saving variables. Visit your deployment's `/api/meeting?period=1d` to verify the `source`, `asOf`, and any `warning` as described above. The original demo's Vercel settings and secrets do **not** transfer to a fork.
 
-## About the old collector workflow
+## Daily collection
 
-`.github/workflows/collect-flow-history.yml` is an **archived buildathon collector**. It hard-codes the original demo URL and a cutoff of September 27, 2026 at 23:59 UTC. It will not collect useful observations after that date, even if GitHub runs it. **Do not point it at your deployment unchanged.** For ongoing collection, replace its URL and cutoff, choose a schedule and budget suitable for your account, and inspect the Actions logs plus `/api/usage`. The app itself can collect observations from normal dashboard visits without this workflow.
+`.github/workflows/collect-flow-history.yml` runs daily at 17:07 UTC and requests one 24-hour cohort observation plus the top-40 snapshot. The original repository uses its production URL. **Forks must set the `BOARDROOM_URL` GitHub Actions repository variable** to their own deployed URL before the collector runs; otherwise it exits without making requests. You can also run it manually from the Actions tab. With both endpoints uncached, a collection costs about 6 Nansen credits. The holder route may return its cached daily observation instead. Monitor your Nansen credit balance and `/api/usage`; the app's call cap does not limit credits directly.
 
 ## What to customize
 
 - `lib/boardroom.ts` contains the BONER token address (`0x98096d17e191b3da1d5f99a6d7b3584351b11e18`), snapshot, labels, and meeting copy. If you change the token, replace the snapshot and other dated copy as well.
 - `app/page.tsx` contains the dashboard, the fixed trading-floor panel, and the briefing PNG. `lib/artwork.ts` and `app/api/art/[name]/route.ts` serve the embedded branded art. Replace the branding and check your rights before reusing it in a new project.
-- `app/api/meeting/route.ts` handles Nansen calls and caching. `lib/nansen-usage.ts` handles the Redis budget, audit counters, and history. `app/api/history/route.ts` exposes chart points; `app/api/usage/route.ts` requires the admin token.
+- `app/api/meeting/route.ts` handles the four cohort flows. `app/api/top-holders/route.ts` reads the 40 largest holders and daily balance changes. `lib/nansen-usage.ts` handles the Redis budget, audit counters, and history. `app/api/history/route.ts` exposes chart points; `app/api/usage/route.ts` requires the admin token.
 
-Net flows are transfers, not confirmed buys; cohorts may overlap. Missing values are not zero. The briefing is downloaded on demand and never posted automatically. Spoken commentary uses the browser's available English male system voices and may be unavailable on some devices.
+Net flows are transfers in USD, not confirmed buys; cohorts may overlap. Top-40 balance changes are in BONER tokens, and the set of top wallets may change between observations. Exchange wallet counts are not tracked by Nansen. Missing values are not zero. The briefing is downloaded on demand and never posted automatically. Spoken commentary uses the browser's available English male system voices and may be unavailable on some devices.
