@@ -17,6 +17,19 @@ const HOLDERS_ATTEMPT=`${PREFIX}:top40:attempt`;
 export type TopHolder={address:string;tokenAmount:number;balanceChange24h:number|null;valueUsd:number|null};
 export type TopHolders={asOf:string;source:'api';wallets:TopHolder[];totalTokens:number;change24h:number|null;count:number};
 
+// Holder USD values are a spot valuation. Applying their implied price to the
+// token delta estimates its current value, not realized net flow or profit.
+export function holderUsdMetrics(snapshot:TopHolders){
+ const valued=snapshot.wallets.length>0&&snapshot.wallets.every(w=>w.valueUsd!==null&&w.valueUsd>=0);
+ const totalValueUsd=valued?snapshot.wallets.reduce((sum,w)=>sum+w.valueUsd!,0):null;
+ const priceUsd=totalValueUsd!==null&&snapshot.totalTokens>0?totalValueUsd/snapshot.totalTokens:null;
+ const change24hUsd=priceUsd!==null&&snapshot.change24h!==null?snapshot.change24h*priceUsd:null;
+ const changesKnown=snapshot.wallets.every(w=>w.balanceChange24h!==null);
+ return {totalValueUsd,priceUsd,change24hUsd,
+  adding:changesKnown?snapshot.wallets.filter(w=>w.balanceChange24h!>0).length:null,
+  reducing:changesKnown?snapshot.wallets.filter(w=>w.balanceChange24h!<0).length:null};
+}
+
 export function usageConfig(){
  // The Vercel Upstash integration prefixes its injected REST credentials.
  const url=process.env.UPSTASH_REDIS_REST_URL??process.env.UPSTASH_REDIS_REST_KV_REST_API_URL;
@@ -106,7 +119,7 @@ export async function readTopHoldersHistory(){
  if(!Array.isArray(response.result))throw new Error('Unexpected holder history reply');
  return response.result.map(row=>{
   const point=JSON.parse(String(row)) as TopHolders;
-  return {asOf:point.asOf,totalTokens:point.totalTokens,change24h:point.change24h,count:point.count};
+  return {asOf:point.asOf,totalTokens:point.totalTokens,change24h:point.change24h,count:point.count,...holderUsdMetrics(point)};
  }).reverse();
 }
 
