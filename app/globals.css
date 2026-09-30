@@ -23,3 +23,6 @@
 @media(max-width:820px){.room-art>img{object-position:center top}.portrait-link{top:10.5%;height:22.5%}}
 
 .trade-holder-history{border-top:1px solid #2a3848;margin-top:20px;padding-top:10px}.trade-holder-history summary{cursor:pointer;color:#e8f35b;font-weight:600;padding:8px 0}.trade-holder-history .footnote{margin:4px 0 10px}.trade-holder-history table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.trade-holder-history th,.trade-holder-history td{text-align:left;padding:9px;border-bottom:1px solid #2a3848;white-space:nowrap}.trade-holder-history th{color:#aab7c8;font-size:12px}.trade-holder-history td{font-size:14px}.holder-delta{font-size:13px;color:#aab7c8;margin-top:12px}
+
+.chain-label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}.chain-logo{display:block;width:22px;height:22px;object-fit:cover;border-radius:4px}
+@media(max-width:1100px){.chain-label{display:none}}
