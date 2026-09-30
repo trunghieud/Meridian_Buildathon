@@ -26,3 +26,5 @@
 
 .chain-label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}.chain-logo{display:block;width:22px;height:22px;object-fit:cover;border-radius:4px}
 @media(max-width:1100px){.chain-label{display:none}}
+
+.report-preview{display:block;width:100%;height:auto;border:1px solid #415067;border-radius:9px}.report-state{display:grid;place-items:center;min-height:240px;color:#aab7c8;text-align:center}
