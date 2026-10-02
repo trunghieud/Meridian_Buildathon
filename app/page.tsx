@@ -39,7 +39,7 @@ export default function Home(){
  const tokenChange=(value:number|null)=>value===null?'Unavailable':(value>0?'+':'')+tokenNumber(value);
  const holderMetrics=topHolders?holderUsdMetrics(topHolders):null;
  const poolManagerRank=topHolders?.wallets.findIndex(w=>w.address.toLowerCase()===POOL_MANAGER)??-1;
- const previousHolderCount=holderCountHistory.length>1?holderCountHistory[holderCountHistory.length-2]:null;
+ const previousHolderCount=holderCount?[...holderCountHistory].reverse().find(point=>point.asOf<holderCount.asOf)??null:null;
  const holderCountChange=holderCount&&previousHolderCount?holderCount.totalHolders-previousHolderCount.totalHolders:null;
  const largestFlow=Math.max(1,...history.flatMap(p=>p.cohorts.map(c=>Math.abs(c.flow??0))));
  const historyLines=['smart','whale','public','exchange'].map(id=>history.flatMap((point,i)=>{

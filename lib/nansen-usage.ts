@@ -146,7 +146,18 @@ export async function storeHolderCount(snapshot:HolderCount,slot:string=collecti
 }
 
 export async function readHolderCountHistory():Promise<HolderCount[]>{
- const response=await command('', ['LRANGE',HOLDER_COUNT_HISTORY,0,729]) as {result?:unknown};
+ // User-requested history correction. Remove only these exact observations
+ // from Redis once; all other history and the latest count remain intact.
+ const cleanup=`if not redis.call('GET',KEYS[2]) then
+for _,row in ipairs(redis.call('LRANGE',KEYS[1],0,-1)) do
+ local point=cjson.decode(row)
+ if point.asOf==ARGV[1] or point.asOf==ARGV[2] then redis.call('LREM',KEYS[1],0,row) end
+end
+redis.call('SET',KEYS[2],'done')
+end
+return redis.call('LRANGE',KEYS[1],0,729)`;
+ const response=await command('', ['EVAL',cleanup,'2',HOLDER_COUNT_HISTORY,`${PREFIX}:holder-count:cleanup:2026-10-02`,
+  '2026-09-30T00:26:26.959Z','2026-10-02T03:42:16.885Z']) as {result?:unknown};
  if(!Array.isArray(response.result))throw new Error('Unexpected holder count history reply');
  return response.result.map(row=>JSON.parse(String(row)) as HolderCount).reverse();
 }
