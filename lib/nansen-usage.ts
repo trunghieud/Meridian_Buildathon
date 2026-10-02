@@ -1,3 +1,4 @@
+import {collectionSlot} from '@/lib/collection-schedule';
 import type {Meeting,Period} from '@/lib/boardroom';
 
 // The counter spans Vercel instances and deployments. A missing or unreachable
@@ -11,11 +12,11 @@ const AUDIT=`${PREFIX}:recent`;
 const HISTORY=(period:Period)=>`${PREFIX}:history:${period}`;
 const HOLDERS=`${PREFIX}:top40:latest`;
 const HOLDERS_HISTORY=`${PREFIX}:top40:history`;
-const HOLDERS_LAST=`${PREFIX}:top40:last-success`;
+const HOLDERS_SLOT=`${PREFIX}:top40:last-slot`;
 const HOLDERS_ATTEMPT=`${PREFIX}:top40:attempt`;
 const HOLDER_COUNT=`${PREFIX}:holder-count:latest`;
 const HOLDER_COUNT_HISTORY=`${PREFIX}:holder-count:history`;
-const HOLDER_COUNT_DAY=`${PREFIX}:holder-count:last-day`;
+const HOLDER_COUNT_SLOT=`${PREFIX}:holder-count:last-slot`;
 const HOLDER_COUNT_ATTEMPT=`${PREFIX}:holder-count:attempt`;
 
 export type TopHolder={address:string;tokenAmount:number;balanceChange24h:number|null;valueUsd:number|null};
@@ -99,28 +100,26 @@ export async function readTopHolders():Promise<TopHolders|null>{
  return typeof response.result==='string'?JSON.parse(response.result) as TopHolders:null;
 }
 
-// A public page may request collection, but only one holder call can start per
-// hour and a successful snapshot blocks further upstream calls for 24 hours.
-const HOLDER_GATE=`local last=tonumber(redis.call('GET',KEYS[1]) or '0')
-if last>tonumber(ARGV[1])-86400 then return 0 end
+// One successful observation per Eastern morning/evening slot. Attempts are
+// locked atomically for an hour within that slot; a new slot has its own lock.
+const HOLDER_GATE=`if redis.call('GET',KEYS[1])==ARGV[1] then return 0 end
 if not redis.call('SET',KEYS[2],ARGV[1],'NX','EX',3600) then return 0 end
 return 1`;
-export async function reserveTopHoldersRefresh():Promise<boolean>{
- const now=Math.floor(Date.now()/1000);
- const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDERS_LAST,HOLDERS_ATTEMPT,String(now)]) as {result?:unknown};
+export async function reserveTopHoldersRefresh(slot:string=collectionSlot()):Promise<boolean>{
+ const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDERS_SLOT,HOLDERS_ATTEMPT+':'+slot,slot]) as {result?:unknown};
  return Number(response.result)===1;
 }
 
-export async function storeTopHolders(snapshot:TopHolders){
+export async function storeTopHolders(snapshot:TopHolders,slot:string=collectionSlot(new Date(snapshot.asOf))){
  const response=await command('/multi-exec',[
-  ['SET',HOLDERS,JSON.stringify(snapshot)],['SET',HOLDERS_LAST,String(Math.floor(new Date(snapshot.asOf).getTime()/1000))],
-  ['LPUSH',HOLDERS_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDERS_HISTORY,0,89],
+  ['SET',HOLDERS,JSON.stringify(snapshot)],['SET',HOLDERS_SLOT,slot],
+  ['LPUSH',HOLDERS_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDERS_HISTORY,0,179],
  ]) as Array<{error?:string}>;
  if(!Array.isArray(response)||response.some(x=>x.error))throw new Error('Holder snapshot could not be persisted');
 }
 
 export async function readTopHoldersHistory(){
- const response=await command('', ['LRANGE',HOLDERS_HISTORY,0,29]) as {result?:unknown};
+ const response=await command('', ['LRANGE',HOLDERS_HISTORY,0,59]) as {result?:unknown};
  if(!Array.isArray(response.result))throw new Error('Unexpected holder history reply');
  return response.result.map(row=>{
   const point=JSON.parse(String(row)) as TopHolders;
@@ -133,25 +132,21 @@ export async function readHolderCount():Promise<HolderCount|null>{
  return typeof response.result==='string'?JSON.parse(response.result) as HolderCount:null;
 }
 
-export async function reserveHolderCountRefresh():Promise<boolean>{
- const day=new Date().toISOString().slice(0,10);
- const gate=`if redis.call('GET',KEYS[1])==ARGV[1] then return 0 end
-if not redis.call('SET',KEYS[2],ARGV[1],'NX','EX',3600) then return 0 end
-return 1`;
- const response=await command('', ['EVAL',gate,'2',HOLDER_COUNT_DAY,HOLDER_COUNT_ATTEMPT,day]) as {result?:unknown};
+export async function reserveHolderCountRefresh(slot:string=collectionSlot()):Promise<boolean>{
+ const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDER_COUNT_SLOT,HOLDER_COUNT_ATTEMPT+':'+slot,slot]) as {result?:unknown};
  return Number(response.result)===1;
 }
 
-export async function storeHolderCount(snapshot:HolderCount){
+export async function storeHolderCount(snapshot:HolderCount,slot:string=collectionSlot(new Date(snapshot.asOf))){
  const response=await command('/multi-exec',[
-  ['SET',HOLDER_COUNT,JSON.stringify(snapshot)],['SET',HOLDER_COUNT_DAY,snapshot.asOf.slice(0,10)],
-  ['LPUSH',HOLDER_COUNT_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDER_COUNT_HISTORY,0,364],
+  ['SET',HOLDER_COUNT,JSON.stringify(snapshot)],['SET',HOLDER_COUNT_SLOT,slot],
+  ['LPUSH',HOLDER_COUNT_HISTORY,JSON.stringify(snapshot)],['LTRIM',HOLDER_COUNT_HISTORY,0,729],
  ]) as Array<{error?:string}>;
  if(!Array.isArray(response)||response.some(x=>x.error))throw new Error('Holder count could not be persisted');
 }
 
 export async function readHolderCountHistory():Promise<HolderCount[]>{
- const response=await command('', ['LRANGE',HOLDER_COUNT_HISTORY,0,364]) as {result?:unknown};
+ const response=await command('', ['LRANGE',HOLDER_COUNT_HISTORY,0,729]) as {result?:unknown};
  if(!Array.isArray(response.result))throw new Error('Unexpected holder count history reply');
  return response.result.map(row=>JSON.parse(String(row)) as HolderCount).reverse();
 }

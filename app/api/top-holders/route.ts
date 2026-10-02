@@ -1,3 +1,4 @@
+import {collectionSlot} from '@/lib/collection-schedule';
 import {TOKEN} from '@/lib/boardroom';
 import {readTopHolders,recordNansenCall,reserveNansenCall,reserveTopHoldersRefresh,storeTopHolders,usageConfig,type TopHolder,type TopHolders} from '@/lib/nansen-usage';
 
@@ -8,11 +9,12 @@ function reply(snapshot:TopHolders|null,warning?:string){
 }
 
 export async function GET(){
+ const slot=collectionSlot();
  if(!usageConfig()||!process.env.NANSEN_API_KEY)return reply(null,'Holder collection is not configured.');
  let previous:TopHolders|null=null;
  try{
   previous=await readTopHolders();
-  if(!await reserveTopHoldersRefresh())return reply(previous,previous?undefined:'The first holder observation is pending.');
+  if(!await reserveTopHoldersRefresh(slot))return reply(previous,previous?undefined:'The first holder observation is pending.');
   if(!await reserveNansenCall())return reply(previous,'The Nansen call budget has been reached.');
  }catch{return reply(previous,'The usage store is unavailable.');}
 
@@ -49,7 +51,7 @@ export async function GET(){
   await recordNansenCall(response.status,Boolean(snapshot),credits,'holders',requestId);
   recorded=true;
   if(!snapshot)return reply(previous,`Nansen returned HTTP ${response.status}; showing the last holder observation.`);
-  await storeTopHolders(snapshot);
+  await storeTopHolders(snapshot,slot);
   return reply(snapshot);
  }catch(error){
   if(!recorded){

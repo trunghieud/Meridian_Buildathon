@@ -1,3 +1,4 @@
+import {collectionSlot} from '@/lib/collection-schedule';
 import {TOKEN} from '@/lib/boardroom';
 import {readHolderCount,recordNansenCall,reserveHolderCountRefresh,reserveNansenCall,storeHolderCount,usageConfig,type HolderCount} from '@/lib/nansen-usage';
 
@@ -8,11 +9,12 @@ function reply(snapshot:HolderCount|null,warning?:string){
 }
 
 export async function GET(){
+ const slot=collectionSlot();
  if(!usageConfig()||!process.env.NANSEN_API_KEY)return reply(null,'Holder count collection is not configured.');
  let previous:HolderCount|null=null;
  try{
   previous=await readHolderCount();
-  if(!await reserveHolderCountRefresh())return reply(previous,previous?undefined:'The first holder count is pending.');
+  if(!await reserveHolderCountRefresh(slot))return reply(previous,previous?undefined:'The first holder count is pending.');
   if(!await reserveNansenCall())return reply(previous,'The Nansen call budget has been reached.');
  }catch{return reply(previous,'The usage store is unavailable.');}
 
@@ -37,7 +39,7 @@ export async function GET(){
   await recordNansenCall(response.status,Boolean(snapshot),credits,'holder-count',requestId);
   recorded=true;
   if(!snapshot)return reply(previous,`Nansen returned HTTP ${response.status}; showing the last holder count.`);
-  await storeHolderCount(snapshot);
+  await storeHolderCount(snapshot,slot);
   return reply(snapshot);
  }catch(error){
   if(!recorded){
