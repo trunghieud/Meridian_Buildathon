@@ -101,12 +101,13 @@ export async function readTopHolders():Promise<TopHolders|null>{
 }
 
 // One successful observation per Eastern morning/evening slot. Attempts are
-// locked atomically for an hour within that slot; a new slot has its own lock.
+// locked atomically; completion shortens only the owning attempt to a 5s cooldown.
+// The last-slot marker still prevents duplicate successful observations.
 const HOLDER_GATE=`if redis.call('GET',KEYS[1])==ARGV[1] then return 0 end
-if not redis.call('SET',KEYS[2],ARGV[1],'NX','EX',3600) then return 0 end
+if not redis.call('SET',KEYS[2],ARGV[2],'NX','EX',3600) then return 0 end
 return 1`;
-export async function reserveTopHoldersRefresh(slot:string=collectionSlot()):Promise<boolean>{
- const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDERS_SLOT,HOLDERS_ATTEMPT+':'+slot,slot]) as {result?:unknown};
+export async function reserveTopHoldersRefresh(slot:string,attemptId:string):Promise<boolean>{
+ const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDERS_SLOT,HOLDERS_ATTEMPT+':'+slot,slot,attemptId]) as {result?:unknown};
  return Number(response.result)===1;
 }
 
@@ -132,8 +133,8 @@ export async function readHolderCount():Promise<HolderCount|null>{
  return typeof response.result==='string'?JSON.parse(response.result) as HolderCount:null;
 }
 
-export async function reserveHolderCountRefresh(slot:string=collectionSlot()):Promise<boolean>{
- const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDER_COUNT_SLOT,HOLDER_COUNT_ATTEMPT+':'+slot,slot]) as {result?:unknown};
+export async function reserveHolderCountRefresh(slot:string,attemptId:string):Promise<boolean>{
+ const response=await command('', ['EVAL',HOLDER_GATE,'2',HOLDER_COUNT_SLOT,HOLDER_COUNT_ATTEMPT+':'+slot,slot,attemptId]) as {result?:unknown};
  return Number(response.result)===1;
 }
 
@@ -167,4 +168,13 @@ export async function readNansenUsage(){
  if(!Array.isArray(result.result)||result.result.length!==4)throw new Error('Unexpected usage summary');
  const [requests,succeeded,usable,credits]=result.result.map(x=>Number(x??0));
  return {requests,succeeded,usable,reportedCredits:credits,budget:usageConfig()!.budget};
+}
+
+// Compare ownership before shortening the lock: a late request must not release
+// a newer request's lock. A small cooldown prevents tight failure loops.
+export async function finishHolderRefresh(kind:'holders'|'holder-count',slot:string,attemptId:string){
+ const key=(kind==='holders'?HOLDERS_ATTEMPT:HOLDER_COUNT_ATTEMPT)+':'+slot;
+ const release=`if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('EXPIRE',KEYS[1],5) end
+return 0`;
+ await command('', ['EVAL',release,'1',key,attemptId]);
 }

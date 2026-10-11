@@ -1,8 +1,10 @@
+import {randomUUID} from 'node:crypto';
 import {collectionSlot} from '@/lib/collection-schedule';
 import {TOKEN} from '@/lib/boardroom';
-import {readTopHolders,recordNansenCall,reserveNansenCall,reserveTopHoldersRefresh,storeTopHolders,usageConfig,type TopHolder,type TopHolders} from '@/lib/nansen-usage';
+import {finishHolderRefresh,readTopHolders,recordNansenCall,reserveNansenCall,reserveTopHoldersRefresh,storeTopHolders,usageConfig,type TopHolder,type TopHolders} from '@/lib/nansen-usage';
 
 export const dynamic='force-dynamic';
+export const maxDuration=60;
 
 function reply(snapshot:TopHolders|null,warning?:string){
  return Response.json({snapshot,warning},{headers:{'Cache-Control':'no-store'}});
@@ -10,11 +12,14 @@ function reply(snapshot:TopHolders|null,warning?:string){
 
 export async function GET(){
  const slot=collectionSlot();
+ const attemptId=randomUUID();
+ let acquired=false;
  if(!usageConfig()||!process.env.NANSEN_API_KEY)return reply(null,'Holder collection is not configured.');
  let previous:TopHolders|null=null;
  try{
+ try{
   previous=await readTopHolders();
-  if(!await reserveTopHoldersRefresh(slot))return reply(previous,previous?undefined:'The first holder observation is pending.');
+  if(!(acquired=await reserveTopHoldersRefresh(slot,attemptId)))return reply(previous,previous?undefined:'The first holder observation is pending.');
   if(!await reserveNansenCall())return reply(previous,'The Nansen call budget has been reached.');
  }catch{return reply(previous,'The usage store is unavailable.');}
 
@@ -59,5 +64,11 @@ export async function GET(){
   }
   console.error('[nansen-holders]',error instanceof Error?error.message:'Unknown collection error');
   return reply(previous,'Holder refresh failed; showing the last available observation.');
+ }
+ }finally{
+  if(acquired){
+   try{await finishHolderRefresh('holders',slot,attemptId);}
+   catch{console.error('[nansen-holders] Could not shorten collection lock');}
+  }
  }
 }

@@ -1,8 +1,10 @@
+import {randomUUID} from 'node:crypto';
 import {collectionSlot} from '@/lib/collection-schedule';
 import {TOKEN} from '@/lib/boardroom';
-import {readHolderCount,recordNansenCall,reserveHolderCountRefresh,reserveNansenCall,storeHolderCount,usageConfig,type HolderCount} from '@/lib/nansen-usage';
+import {finishHolderRefresh,readHolderCount,recordNansenCall,reserveHolderCountRefresh,reserveNansenCall,storeHolderCount,usageConfig,type HolderCount} from '@/lib/nansen-usage';
 
 export const dynamic='force-dynamic';
+export const maxDuration=60;
 
 function reply(snapshot:HolderCount|null,warning?:string){
  return Response.json({snapshot,warning},{headers:{'Cache-Control':'no-store'}});
@@ -10,11 +12,14 @@ function reply(snapshot:HolderCount|null,warning?:string){
 
 export async function GET(){
  const slot=collectionSlot();
+ const attemptId=randomUUID();
+ let acquired=false;
  if(!usageConfig()||!process.env.NANSEN_API_KEY)return reply(null,'Holder count collection is not configured.');
  let previous:HolderCount|null=null;
  try{
+ try{
   previous=await readHolderCount();
-  if(!await reserveHolderCountRefresh(slot))return reply(previous,previous?undefined:'The first holder count is pending.');
+  if(!(acquired=await reserveHolderCountRefresh(slot,attemptId)))return reply(previous,previous?undefined:'The first holder count is pending.');
   if(!await reserveNansenCall())return reply(previous,'The Nansen call budget has been reached.');
  }catch{return reply(previous,'The usage store is unavailable.');}
 
@@ -47,5 +52,11 @@ export async function GET(){
   }
   console.error('[nansen-holder-count]',error instanceof Error?error.message:'Unknown collection error');
   return reply(previous,'Holder count refresh failed; showing the last available observation.');
+ }
+ }finally{
+  if(acquired){
+   try{await finishHolderRefresh('holder-count',slot,attemptId);}
+   catch{console.error('[nansen-holder-count] Could not shorten collection lock');}
+  }
  }
 }
